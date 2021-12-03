@@ -297,6 +297,9 @@ def main() -> None:
 
     if image_file:
         data = pyzbar.pyzbar.decode(PIL.Image.open(image_file))
+        if len(data) == 0:
+            log.error("QR-not found! Cannot continue.")
+            exit(1)
         covid_cert_data = data[0].data.decode()
         log.debug("QR-code has: {}".format(covid_cert_data))
     elif args.raw_string:
