@@ -41,9 +41,9 @@ Run:
 [image] can be an image in any format pillow supports, including of
 course PNG and JPG.
 
-## Example run:
+## Example run, raw output of CBOR:
 ```bash
-$ ./vacdec samples/Sweden-2.png
+$ ./vacdec samples/Sweden-2.png --output-raw
 2021-08-05 19:33:39,927 [INFO ]  COVID certificate signed with X.509 certificate.
 2021-08-05 19:33:39,927 [INFO ]  X.509 in DER form has SHA-256 beginning with: 5f74910195c5cecb
 2021-08-05 19:36:24,800 [INFO ]  Found the key from DB!
@@ -75,6 +75,44 @@ $ ./vacdec samples/Sweden-2.png
         "gnt": "OSCAR"
       },
       "ver": "1.3.0"
+    }
+  }
+}
+```
+## Example run, human readable output:
+```bash
+$ ./vacdec samples/Sweden-2.png
+2021-12-11 13:55:14,799 [INFO ]  COVID certificate signed with X.509 certificate.
+2021-12-11 13:55:14,799 [INFO ]  X.509 in DER form has SHA-256 beginning with: 5f74910195c5cecb
+2021-12-11 13:55:14,801 [INFO ]  Found the key from DB!
+2021-12-11 13:55:14,820 [INFO ]  Signature verified ok
+2021-12-11 13:55:14,820 [INFO ]  Certificate as JSON: {
+  "issuer": "Sweden",
+  "expiry:": "2021-07-03 09:50:02",
+  "issued:": "2021-06-15 09:50:03",
+  "Health certificate": {
+    "1": {
+      "Test": [
+        {
+          "Unique Certificate Identifier: UVCI": "URN:UVCI:01:SE:EHM/TARN89875439877",
+          "Country of Test": "Sweden",
+          "Certificate Issuer": "Swedish eHealth Agency",
+          "NAA Test Name": "Roche LightCycler qPCR",
+          "Date/Time of Sample Collection": "2021-06-15 09:24:02+00:00",
+          "Testing Centre": "Arlanda Airport Covid Center 1",
+          "Targeted disease or agent": "COVID-19",
+          "Test Result": "Not detected",
+          "Type of Test": "LP6464-4: Nucleic acid amplification with probe detection"
+        }
+      ],
+      "Date of birth": "1958-11-11",
+      "Name": {
+        "Surname": "Lövström",
+        "Forename": "Oscar",
+        "ICAO 9303 standardised surname": "LOEVSTROEM",
+        "ICAO 9303 standardised forename": "OSCAR"
+      },
+      "Version": "1.3.0"
     }
   }
 }
