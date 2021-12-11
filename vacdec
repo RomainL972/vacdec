@@ -40,11 +40,11 @@ def _setup_logger() -> None:
     console_handler.propagate = False
     log = logging.getLogger()
     log.addHandler(console_handler)
-    #log.setLevel(logging.DEBUG)
+    # log.setLevel(logging.DEBUG)
     log.setLevel(logging.INFO)
 
 
-def find_key(key: KID, keys_file: str) -> Optional[cosekey.CoseKey]:
+def find_key(key: KID, certs_dir: str, keys_file: str) -> Optional[cosekey.CoseKey]:
     if False:
         # Test read a PEM-key
         cose_key = read_cosekey_from_pem_file("certs/Finland.pem")
@@ -52,7 +52,7 @@ def find_key(key: KID, keys_file: str) -> Optional[cosekey.CoseKey]:
         # pprint(cose_key.kid.decode())
 
     key_id_str = key.hex()
-    pem_filename = "{}/{}.pem".format(DEFAULT_CERTIFICATE_DIRECTORY, key_id_str)
+    pem_filename = "{}/{}.pem".format(certs_dir, key_id_str)
     log.debug("Check if certificate {} exists.".format(pem_filename))
     if os.path.exists(pem_filename):
         with open(pem_filename, "rb") as pem_file:
@@ -71,7 +71,7 @@ def find_key(key: KID, keys_file: str) -> Optional[cosekey.CoseKey]:
             log.debug("Certificate has no subject")
         log.info("Using X.509 certificate {}".format(pem_filename))
         cose_key = _cert_to_cose_key(cert, key)
-    else:
+    elif os.path.exists(keys_file):
         # Read the JSON-database of all known keys
         with open(keys_file, encoding='utf-8') as f:
             known_keys = json.load(f)
@@ -95,7 +95,9 @@ def find_key(key: KID, keys_file: str) -> Optional[cosekey.CoseKey]:
 
         if not cose_key:
             return None
-
+    else:
+        log.warning("Cannot find PEM-certificates directory nor keys JSON-file! Failed to locate signature key.")
+        return None
     if cose_key.kid.decode() != key.hex():
         raise RuntimeError("Internal: No key for {0}!".format(key.hex()))
 
@@ -220,7 +222,7 @@ def read_cosekey_from_pem_file(cert_file: str) -> cosekey.CoseKey:
     return cosekey_from_jwk_dict(jwk_dict)
 
 
-def output_covid_cert_data(cert: str, keys_file: str) -> None:
+def output_covid_cert_data(cert: str, certs_dir: str, keys_file: str, output_json_file: str = None) -> None:
     # Code adapted from:
     # https://alphalist.com/blog/the-use-of-blockchain-for-verification-eu-vaccines-passport-program-and-more
 
@@ -243,13 +245,14 @@ def output_covid_cert_data(cert: str, keys_file: str) -> None:
         log.info("Certificate is not signed")
     else:
         if (pkid and ukid) and (pkid != ukid):
-            log.info("Both protected and unprotected headers contain differing key references, defaulting to the protected one")
+            log.info(
+                "Both protected and unprotected headers contain differing key references, defaulting to the protected one")
         elif ukid and not pkid:
             log.info("Protected header key reference missing, using the unprotected one")
         kid = pkid or ukid
         log.info("COVID certificate signed with X.509 certificate.")
         log.info("X.509 in DER form has SHA-256 beginning with: {0}".format(kid.hex()))
-        key = find_key(kid, keys_file)
+        key = find_key(kid, certs_dir, keys_file)
         if key:
             verify_signature(cose_msg, key)
         else:
@@ -261,6 +264,12 @@ def output_covid_cert_data(cert: str, keys_file: str) -> None:
     # If used, this will decode as a datetime. A datetime cannot be JSON-serialized without hints (use str as default).
     # Note 2: Names may contain non-ASCII characters in UTF-8
     log.info("Certificate as JSON: {0}".format(json.dumps(cbor, indent=2, default=str, ensure_ascii=False)))
+
+    # Output?
+    if output_json_file:
+        with open(output_json_file, "w") as json_out:
+            json.dump(cbor, json_out, indent=2, default=str, ensure_ascii=False)
+        log.info("Wrote certificate into {}".format(output_json_file))
 
 
 def verify_signature(cose_msg: CoseMessage, key: cosekey.CoseKey) -> bool:
@@ -278,12 +287,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='EU COVID Vaccination Passport Verifier')
     parser.add_argument('--image-file', metavar="IMAGE-FILE",
                         help='Image to read QR-code from')
-    parser.add_argument('--raw-string', metavar="RAW-STRING",
-                        help='Contents of the QR-code as string')
+    parser.add_argument('--raw-string', '--raw-data', metavar="RAW-STRING",
+                        help='Contents of the QR-code as string. Alternatively a file with raw string in it.')
     parser.add_argument('image_file_positional', metavar="IMAGE-FILE", nargs="?",
                         help='Image to read QR-code from')
+    parser.add_argument('--certificates-directory', default=DEFAULT_CERTIFICATE_DIRECTORY,
+                        help="Signature X.509 PEM certificates dir. Default: {0}".format(DEFAULT_CERTIFICATE_DIRECTORY))
     parser.add_argument('--certificate-db-json-file', default=DEFAULT_CERTIFICATE_DB_JSON,
-                        help="Default: {0}".format(DEFAULT_CERTIFICATE_DB_JSON))
+                        help="Signature certificate JSON-file. Default: {0}".format(DEFAULT_CERTIFICATE_DB_JSON))
+    parser.add_argument('--output-json-file',
+                        help="Output resulting data as JSON.")
 
     args = parser.parse_args()
     _setup_logger()
@@ -303,14 +316,24 @@ def main() -> None:
         covid_cert_data = data[0].data.decode()
         log.debug("QR-code has: {}".format(covid_cert_data))
     elif args.raw_string:
-        covid_cert_data = args.raw_string
+        if os.path.exists(args.raw_string):
+            with open(args.raw_string, "r") as covid_file:
+                covid_cert_data = covid_file.readline()
+            if not covid_cert_data.startswith("HC1:"):
+                log.error("File {} doesn't contain EU COVID passport data!")
+                exit(1)
+        else:
+            covid_cert_data = args.raw_string
     else:
         log.error("Input parameters: Need either --image-file or --raw-string QR-code content.")
         exit(2)
 
     # Got the data, output
     log.debug("Cert data: '{0}'".format(covid_cert_data))
-    output_covid_cert_data(covid_cert_data, args.certificate_db_json_file)
+    output_covid_cert_data(covid_cert_data,
+                           args.certificates_directory,
+                           args.certificate_db_json_file,
+                           args.output_json_file)
 
 
 if __name__ == '__main__':
